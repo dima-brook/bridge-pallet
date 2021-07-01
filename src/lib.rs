@@ -247,7 +247,7 @@ impl<T: Config> pallet::Pallet<T> {
         let mut ret = Ok(false);
 
         let validator_cnt = ValidatorCnt::<T>::get().expect("invalid genesis?!");
-        if action.validators.len() == ((2./3.)*(validator_cnt as f64)) as usize {
+        if action.validators.len() == ((2./3.)*(validator_cnt as f64)) as usize + 1 {
             ret = Ok(true);
         }
 
