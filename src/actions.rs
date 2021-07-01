@@ -1,4 +1,4 @@
-use sp_std::collections::btree_set::BTreeSet;
+use sp_std::{collections::btree_set::BTreeSet, vec::Vec};
 use crate::{Config, Balance};
 use sp_runtime::{RuntimeDebug};
 use codec::{Encode, Decode};

@@ -6,6 +6,7 @@ mod actions;
 pub use pallet::*;
 use actions::*;
 
+use sp_std::vec::Vec;
 use frame_support::traits::Currency;
 
 
@@ -17,11 +18,11 @@ pub(crate) type Balance<T> =
 pub mod pallet {
     use super::*;
 	use frame_support::{
-        dispatch::DispatchResultWithPostInfo,
         pallet_prelude::*,
         traits::{WithdrawReasons, ExistenceRequirement}
     };
     use sp_runtime::traits::StaticLookup;
+    use sp_std::vec::Vec;
 	use frame_system::pallet_prelude::*;
     use weights::WeightInfo;
 
@@ -61,15 +62,15 @@ pub mod pallet {
 	pub enum Event<T: Config> {
         /// Send currency from local chain to foreign chain
         /// action_id, target address, currency ammount
-        Transfer(ActionId, String, Balance<T>),
+        Transfer(ActionId, Vec<u8>, Balance<T>),
 
         /// Call a smart contract on foreign chain
         /// action_id, contract address, call endpoint identifier, raw arguments
-        ScCall(ActionId, String, String, Vec<Vec<u8>>),
+        ScCall(ActionId, Vec<u8>, Vec<u8>, Vec<Vec<u8>>),
 
         /// Send foreign currency back
         /// action_id, target address, currency ammount
-        UnfreezeWrapped(ActionId, String, Balance<T>),
+        UnfreezeWrapped(ActionId, Vec<u8>, Balance<T>),
 	}
 
 	// Errors inform users that something went wrong.
@@ -94,11 +95,11 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(2))]
         pub fn send(
             origin: OriginFor<T>,
-            dest: String,
+            dest: Vec<u8>,
             #[pallet::compact] value: Balance<T> 
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
+            //bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
             if value == 0u32.into() {
                 return Err(Error::<T>::InvalidValue.into());
             }
@@ -119,13 +120,13 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(1))]
         pub fn send_sc_call(
             origin: OriginFor<T>,
-            dest: String,
-            endpoint: String,
+            dest: Vec<u8>,
+            endpoint: Vec<u8>,
             args: Vec<Vec<u8>>
         ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
 
-            bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
+            //bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
 
             // TODO: Deduct some balance as txn fees
             let action = <LastActionId<T>>::get().expect("Invalid genesis config?!");
