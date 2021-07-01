@@ -582,6 +582,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "pallet-contracts",
  "parity-scale-codec",
  "serde",
  "sp-core",
@@ -1183,6 +1184,52 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "pallet-contracts"
+version = "3.0.0"
+source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.3#c94e0cdfe5556680dca1996004751eeb114755d7"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-contracts-primitives",
+ "pallet-contracts-proc-macro",
+ "parity-scale-codec",
+ "parity-wasm 0.42.2",
+ "pwasm-utils",
+ "serde",
+ "smallvec",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-sandbox",
+ "sp-std",
+ "wasmi-validation 0.4.0",
+]
+
+[[package]]
+name = "pallet-contracts-primitives"
+version = "3.0.0"
+source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.3#c94e0cdfe5556680dca1996004751eeb114755d7"
+dependencies = [
+ "bitflags",
+ "parity-scale-codec",
+ "serde",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-contracts-proc-macro"
+version = "3.0.0"
+source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.3#c94e0cdfe5556680dca1996004751eeb114755d7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "parity-scale-codec"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1238,6 +1285,12 @@ name = "parity-wasm"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
+
+[[package]]
+name = "parity-wasm"
+version = "0.42.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be5e13c266502aadf83426d87d81a0f5d1ef45b8027f5a471c360abfe4bfae92"
 
 [[package]]
 name = "parking_lot"
@@ -1381,6 +1434,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0d8caf72986c1a598726adc988bb5984792ef84f5ee5aa50209145ee8077038"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "pwasm-utils"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78778a25194f953d1766fc8c6a331ed56f070d09a0511267ee2c150cb71ea8c2"
+dependencies = [
+ "byteorder",
+ "log",
+ "parity-wasm 0.42.2",
 ]
 
 [[package]]
@@ -1970,6 +2034,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-sandbox"
+version = "0.9.0"
+source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.3#c94e0cdfe5556680dca1996004751eeb114755d7"
+dependencies = [
+ "parity-scale-codec",
+ "sp-core",
+ "sp-io",
+ "sp-std",
+ "sp-wasm-interface",
+ "wasmi",
+]
+
+[[package]]
 name = "sp-staking"
 version = "3.0.0"
 source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.3#c94e0cdfe5556680dca1996004751eeb114755d7"
@@ -2407,8 +2484,8 @@ dependencies = [
  "memory_units",
  "num-rational 0.2.4",
  "num-traits",
- "parity-wasm",
- "wasmi-validation",
+ "parity-wasm 0.41.0",
+ "wasmi-validation 0.3.0",
 ]
 
 [[package]]
@@ -2417,7 +2494,16 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
 dependencies = [
- "parity-wasm",
+ "parity-wasm 0.41.0",
+]
+
+[[package]]
+name = "wasmi-validation"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb8e860796d8be48efef530b60eebf84e74a88bce107374fffb0da97d504b8"
+dependencies = [
+ "parity-wasm 0.42.2",
 ]
 
 [[package]]

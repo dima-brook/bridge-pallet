@@ -21,9 +21,9 @@ pub mod pallet {
         pallet_prelude::*,
         traits::{WithdrawReasons, ExistenceRequirement}
     };
+    use sp_runtime::traits::StaticLookup;
 	use frame_system::pallet_prelude::*;
     use weights::WeightInfo;
-    use sp_runtime::traits::StaticLookup;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -152,7 +152,44 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO: RPC, Mint Wrapped, etc
+        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        pub fn sc_call_verify(
+            validator: OriginFor<T>,
+            action_id: Vec<u8>,
+            contract: <T::Lookup as StaticLookup>::Source,
+            raw_call_data: Vec<u8>
+        ) -> DispatchResultWithPostInfo {
+            let acc = ensure_signed(validator)?;
+
+            let contract = T::Lookup::lookup(contract)?;
+            if Self::verify_action(acc, action_id, LocalAction::<T>::RpcCall {
+                contract: contract.clone(),
+                call_data: raw_call_data.clone()
+            })? {
+               // TODO: execute contract
+            }
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        pub fn transfer_wrapped_verify(
+            validator: OriginFor<T>,
+            action_id: Vec<u8>,
+            to: T::AccountId,
+            value: Balance<T>
+        ) -> DispatchResultWithPostInfo {
+            let acc = ensure_signed(validator)?;
+
+            if Self::verify_action(acc, action_id, LocalAction::<T>::TransferWrapped {
+                to,
+                value
+            })? {
+                // TODO: Mint Wrapped token (use balance as an erc20?!)
+            }
+
+            Ok(().into())
+        }
 	}
 
     /// Genesis config
