@@ -1,18 +1,24 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod weights;
+mod erc1155_raw;
 mod actions;
 
 pub use pallet::*;
 use actions::*;
 
+use codec::Encode;
 use sp_std::vec::Vec;
-use frame_support::traits::Currency;
+use frame_support::{traits::{Currency, Get}, PalletId};
+use sp_runtime::{traits::AccountIdConversion, DispatchError};
+use pallet_contracts::{Pallet as Contract, chain_extension::UncheckedFrom};
+use pallet_contracts_primitives::ContractExecResult;
 
-
+pub type TokenId = u128;
 pub type ActionId = u128;
+
 pub(crate) type Balance<T> =
-	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	<<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -27,12 +33,11 @@ pub mod pallet {
     use weights::WeightInfo;
 
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: frame_system::Config + pallet_contracts::Config {
+        type PalletId: Get<PalletId>;
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-        type Currency: Currency<Self::AccountId>;
-
-        type WeightInfo: WeightInfo;
+        type FreezerWeightInfo: WeightInfo;
 	}
 
 	#[pallet::pallet]
@@ -55,6 +60,18 @@ pub mod pallet {
     /// action_id: action_info
     #[pallet::storage]
     pub type Actions<T: Config> = StorageMap<_, Blake2_128Concat, Vec<u8>, ActionInfo<T>>;
+
+    /// Address of the erc1155 contract
+    /// initialized at genesis
+    #[pallet::storage]
+    #[pallet::getter(fn erc1155_addr)]
+    pub type Erc1155<T: Config> = StorageValue<_, T::AccountId>;
+
+    /// Token identifier of egld
+    #[pallet::storage]
+    #[pallet::getter(fn egld_identifier)]
+    pub type EgldTokenId<T: Config> = StorageValue<_, TokenId>;
+
 
 	#[pallet::event]
 	#[pallet::metadata(T::AccountId = "AccountId")]
@@ -83,14 +100,19 @@ pub mod pallet {
 	    /// Invalid Destination address
         InvalidDestination,
         Unauthorized,
-        DuplicateValidation
+        DuplicateValidation,
+        /// Contract already initialized
+        Initialized
 	}
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
 	#[pallet::call]
-	impl<T: Config> Pallet<T> {
+	impl<T: Config> Pallet<T>
+    where
+        T::AccountId: UncheckedFrom<T::Hash> + AsRef<[u8]>
+    {
         // TODO: proper weight
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(2))]
         pub fn send(
@@ -109,9 +131,27 @@ pub mod pallet {
 
             // TODO: Deduct some as txn fees
             T::Currency::withdraw(&who, value, WithdrawReasons::RESERVE, ExistenceRequirement::KeepAlive)?; // TODO: Separate reserve storage for acc
-            let action = <LastActionId<T>>::get().expect("Invalid genesis config?!");
+            let action = Self::action_inc();
             Self::deposit_event(Event::Transfer(action, dest, value));
-            <LastActionId<T>>::put(action+1);
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(2))]
+        pub fn withdraw_wrapped(
+            origin: OriginFor<T>,
+            dest: Vec<u8>,
+            #[pallet::compact] value: Balance<T>
+        ) -> DispatchResultWithPostInfo {
+            let acc = ensure_signed(origin)?;
+            // TODO: bech32 decode check
+            if value == 0u32.into() {
+                return Err(Error::<T>::InvalidValue.into());
+            }
+
+            Self::erc1155_burn(acc, Self::egld_identifier().unwrap(), value).result?;
+            let action = Self::action_inc();
+            Self::deposit_event(Event::UnfreezeWrapped(action, dest, value));
 
             Ok(().into())
         }
@@ -129,7 +169,7 @@ pub mod pallet {
             //bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
 
             // TODO: Deduct some balance as txn fees
-            let action = <LastActionId<T>>::get().expect("Invalid genesis config?!");
+            let action = <LastActionId<T>>::get().unwrap();
             Self::deposit_event(Event::ScCall(action, dest, endpoint, args));
             <LastActionId<T>>::put(action+1);
 
@@ -137,7 +177,7 @@ pub mod pallet {
         }
 
         // TODO: Proper weight
-        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        #[pallet::weight(10000 + T::FreezerWeightInfo::verify_action())]
         pub fn unfreeze_verify(
             validator: OriginFor<T>,
             action_id: Vec<u8>,
@@ -153,7 +193,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        #[pallet::weight(10000 + T::FreezerWeightInfo::verify_action())]
         pub fn sc_call_verify(
             validator: OriginFor<T>,
             action_id: Vec<u8>,
@@ -173,7 +213,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        #[pallet::weight(10000 + T::FreezerWeightInfo::verify_action())]
         pub fn transfer_wrapped_verify(
             validator: OriginFor<T>,
             action_id: Vec<u8>,
@@ -182,11 +222,11 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let acc = ensure_signed(validator)?;
 
-            if Self::verify_action(acc, action_id, LocalAction::<T>::TransferWrapped {
+            if Self::verify_action(acc.clone(), action_id, LocalAction::<T>::TransferWrapped {
                 to,
                 value
             })? {
-                // TODO: Mint Wrapped token (use balance as an erc20?!)
+                Self::erc1155_mint(acc, Self::egld_identifier().unwrap(), value).result?;
             }
 
             Ok(().into())
@@ -195,6 +235,7 @@ pub mod pallet {
 
     /// Genesis config
     /// initial_validators should be a list of initial validators that are trusted
+    /// You shouldn't use the default GenesisConfig!
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub initial_validators: Vec<T::AccountId>,
@@ -211,14 +252,102 @@ pub mod pallet {
 
     #[cfg(feature = "std")]
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T>
+    where
+        T::AccountId: UncheckedFrom<T::Hash> + AsRef<[u8]>
+    {
         fn build(&self) {
             <LastActionId<T>>::put(0);
             for validator in &self.initial_validators {
                 <Validators<T>>::insert(validator.clone(), ());
             }
             <ValidatorCnt<T>>::put(self.initial_validators.len() as u64);
+        
+            let erc1155_addr = Pallet::<T>::init_erc1155(
+                erc1155_raw::CONTRACT_BYTES.to_vec()
+            );
+            <Erc1155<T>>::put(erc1155_addr);
+
+            let egld_tokenid = Pallet::<T>::erc1155_create()
+                .expect("Failed to create egld token!");
+            <EgldTokenId<T>>::put(egld_tokenid);
         }
+    }
+}
+
+impl<T: Config> Pallet<T>
+where
+    T::AccountId: UncheckedFrom<T::Hash> + AsRef<[u8]>
+{
+    fn account_id() -> T::AccountId {
+        T::PalletId::get().into_account()
+    }
+
+    fn erc1155_address() -> T::AccountId {
+        <Erc1155<T>>::get().unwrap()
+    }
+
+    fn erc1155_mint(account: T::AccountId, token: TokenId, value: Balance<T>) -> ContractExecResult {
+        let encoded_acc = account.encode();
+        let encoded_token = token.encode();
+        let encoded_value = value.encode();
+        let raw_data = [&erc1155_raw::MINT_SELECTOR[..], &encoded_acc, &encoded_token, &encoded_value].concat();
+
+        Contract::<T>::bare_call(
+            Self::account_id(),
+            Self::erc1155_address(),
+            0u32.into(),
+            10E10 as u64, // TODO: Tweak
+            raw_data,
+            false
+        )
+    }
+
+    fn erc1155_burn(account: T::AccountId, token: TokenId, value: Balance<T>) -> ContractExecResult {
+        let encoded_acc = account.encode();
+        let encoded_token = token.encode();
+        let encoded_value = value.encode();
+        let raw_data = [&erc1155_raw::BURN_SELECTOR[..], &encoded_acc, &encoded_token, &encoded_value].concat();
+
+        Contract::<T>::bare_call(
+            Self::account_id(),
+            Self::erc1155_address(),
+            0u32.into(),
+            10E10 as u64, // TODO: Tweak
+            raw_data,
+            false
+        )
+    }
+
+    #[cfg(feature = "std")]
+    fn erc1155_create() -> Result<TokenId, DispatchError> {
+        let encoded_value = Balance::<T>::from(0u32).encode();
+        let raw_data = [&erc1155_raw::CREATE_SELECTOR[..], &encoded_value].concat();
+
+        Contract::<T>::bare_call(
+            Self::account_id(),
+            Self::erc1155_address(),
+            0u32.into(),
+            10E10 as u64, // TODO: Tweak
+            raw_data,
+            false
+        ).result.map(|_| 0u128) // TODO: Decode result and read from there inste
+    }
+
+    #[cfg(feature = "std")]
+    fn init_erc1155(raw_code: Vec<u8>) -> T::AccountId {
+        use pallet_contracts_primitives::Code;
+
+        Contract::<T>::bare_instantiate(
+            Self::account_id(),
+            (10E16 as u32).into(),
+            10E10 as u64, // TODO: Tweak
+            Code::Upload(raw_code.into()),
+            Vec::new(),
+            Vec::new(), // TODO: proper salt
+            false,
+            false
+        ).result.expect("Failed to initialize contract?!").account_id
     }
 }
 
@@ -256,5 +385,12 @@ impl<T: Config> pallet::Pallet<T> {
         }
 
         return ret;
+    }
+
+    fn action_inc() -> ActionId {
+        let action = <LastActionId<T>>::get().unwrap();
+        <LastActionId<T>>::put(action+1);
+
+        return action;
     }
 }

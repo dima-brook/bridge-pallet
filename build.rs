@@ -1,0 +1,81 @@
+use std::process::Command;
+use std::path::Path;
+use std::{fs, io};
+use reusable_fmt::{fmt_reuse, fmt};
+
+const ERC1155_DIR: &str = "./erc1155-ink/examples/erc1155";
+
+fmt_reuse! {
+    OUT_CONTRACT = "{proj}/target/ink/erc1155.wasm";
+    OUT_METADATA = "{proj}/target/ink/metadata.json";
+
+    ERC1155_RAW_SRC = r#"
+#[cfg(feature = "std")]
+pub const CREATE_SELECTOR: [u8; 4] = {create_selector};
+pub const MINT_SELECTOR: [u8; 4] = {mint_selector};
+pub const BURN_SELECTOR: [u8; 4] = {burn_selector};
+#[cfg(feature = "std")]
+pub const CONTRACT_BYTES: [u8; {sz}] = {data_array};
+"#;
+}
+
+type JsonMap = serde_json::Map<String, serde_json::Value>;
+
+fn vec_to_data_string(data: impl Iterator<Item = u8>) -> String {
+    let res: String = data.into_iter().map(|v| fmt!("{:#x}, ", v)).collect();
+
+    return fmt!("[{}]", res);
+}
+
+fn main() {
+    println!("compiling erc1155 contract...");
+    Command::new("cargo")
+        .args(&["+nightly", "contract", "build"])
+        .current_dir(ERC1155_DIR)
+        .output()
+        .expect("Failed to compile contract?!");
+
+    let raw = fs::read(fmt!(OUT_CONTRACT, proj=ERC1155_DIR)).expect("Couldn't read sc?!");
+    let raw_sz = raw.len();
+    let raw_ar_str = vec_to_data_string(raw.into_iter());
+
+    let metadata_f = fs::File::open(fmt!(OUT_METADATA, proj=ERC1155_DIR)).expect("Couldn't read metadata?!");
+    let metadata_r = io::BufReader::new(metadata_f);
+    let metadata: JsonMap = serde_json::from_reader(metadata_r).unwrap();
+
+    let messages = metadata["spec"]
+        .as_object().unwrap()["messages"]
+        .as_array().unwrap()
+        .into_iter().map(|v| v.as_object().unwrap());
+
+    let mut mint_selector: Option<u32> = None;
+    let mut burn_selector: Option<u32> = None;
+    let mut create_selector: Option<u32> = None;
+    for message in messages {
+        let extract_selector = || Some(u32::from_str_radix(message["selector"].as_str().unwrap().strip_prefix("0x").unwrap(), 16).unwrap());
+        match message["name"].as_array().unwrap()[0].as_str().unwrap() {
+            "mint" => mint_selector = extract_selector(),
+            "burn" => burn_selector = extract_selector(),
+            "create" => create_selector = extract_selector(),
+            _ => ()
+        }
+    }
+
+    let unwrap_selector = |selector: Option<u32>| vec_to_data_string(
+        selector.unwrap().to_be_bytes().iter().cloned()
+    );
+
+    let mint_selector = unwrap_selector(mint_selector);
+    let burn_selector = unwrap_selector(burn_selector);
+    let create_selector = unwrap_selector(create_selector);
+
+    let raw_src = fmt!(ERC1155_RAW_SRC,
+        create_selector=create_selector,
+        mint_selector=mint_selector,
+        burn_selector=burn_selector,
+        sz=raw_sz, 
+        data_array=raw_ar_str
+    );
+    let raw_srcf = Path::new(&std::env::var("OUT_DIR").unwrap()).join("erc1155.bin.rs");
+    fs::write(raw_srcf, raw_src).expect("failed to write erc1155?!");
+}

@@ -10,17 +10,22 @@ targets = ['x86_64-unknown-linux-gnu']
 [dependencies]
 codec = { package = 'parity-scale-codec', version = '2.0.0', features = ['derive'], default-features = false }
 bech32 = { version = "0.8.1", default-features = false }
-frame-benchmarking = { git = 'https://github.com/paritytech/substrate', version = '3.1.0', tag = 'monthly-2021-05', default-features = false, optional = true }
-frame-support = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
-frame-system = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
-sp-std = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
-pallet-contracts = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
+frame-benchmarking = { git = 'https://github.com/paritytech/substrate', version = '3.1.0', tag = 'monthly-2021-07', default-features = false, optional = true }
+frame-support = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+frame-system = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+sp-std = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+pallet-contracts = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+pallet-contracts-primitives = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
 
 [dev-dependencies]
 serde = { version = "1.0.119" }
-sp-core = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
-sp-io = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-05', default-features = false }
+sp-core = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+sp-io = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
+
+[build-dependencies]
+serde_json = "1"
+reusable-fmt = "0.2"
 
 [features]
 default = ['std']
