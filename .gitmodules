@@ -1,0 +1,3 @@
+[submodule "erc1155-ink"]
+	path = erc1155-ink
+	url = https://github.com/paritytech/ink
