@@ -1,5 +1,5 @@
 use sp_std::{collections::btree_set::BTreeSet, vec::Vec};
-use crate::{Config, Balance};
+use crate::{Config, Balance, EgldBalance};
 use sp_runtime::{RuntimeDebug};
 use codec::{Encode, Decode};
 
@@ -22,7 +22,7 @@ pub enum LocalAction<T: Config> {
     /// Mint foreign currency and send to target
     TransferWrapped {
         to: T::AccountId,
-        value: Balance<T>
+        value: EgldBalance<T>
     }
 }
 

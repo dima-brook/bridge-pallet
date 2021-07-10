@@ -10,11 +10,9 @@ fmt_reuse! {
     OUT_METADATA = "{proj}/target/ink/metadata.json";
 
     ERC1155_RAW_SRC = r#"
-#[cfg(feature = "std")]
 pub const CREATE_SELECTOR: [u8; 4] = {create_selector};
 pub const MINT_SELECTOR: [u8; 4] = {mint_selector};
 pub const BURN_SELECTOR: [u8; 4] = {burn_selector};
-#[cfg(feature = "std")]
 pub const CONTRACT_BYTES: [u8; {sz}] = {data_array};
 "#;
 }

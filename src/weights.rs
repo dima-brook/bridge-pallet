@@ -4,6 +4,8 @@ use sp_std::marker::PhantomData;
 
 pub trait WeightInfo {
     fn verify_action() -> Weight;
+    fn erc1155_init() -> Weight;
+    fn erc1155_create_token() -> Weight;
 }
 
 pub struct SubstrateWeight<T>(PhantomData<T>);
@@ -14,6 +16,14 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
+
+    fn erc1155_init() -> Weight {
+        10E10 as Weight
+    }
+
+    fn erc1155_create_token() -> Weight {
+        10E10 as Weight
+    }
 }
 
 impl WeightInfo for () {
@@ -23,4 +33,12 @@ impl WeightInfo for () {
 			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
+
+    fn erc1155_init() -> Weight {
+        10E10 as Weight
+    }
+
+    fn erc1155_create_token() -> Weight {
+        10E10 as Weight
+    }
 }
