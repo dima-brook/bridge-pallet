@@ -131,13 +131,14 @@ pub mod pallet {
         }
 
         // TODO: Proper weight
-        #[pallet::weight(10000)]
+        #[pallet::weight(10000 + T::DbWeight::get().writes(2))]
         pub fn send_nft(
             origin: OriginFor<T>,
             dest: Vec<u8>,
             nft_id: NftId<T>
         ) -> DispatchResultWithPostInfo {
-            ensure_signed(origin)?;
+            let who = ensure_signed(origin)?;
+            ensure!(T::Nft::owner_of(&nft_id) == who, Error::<T>::Unauthorized);
 
             T::Nft::lock(&nft_id)?;
             let action = Self::action_inc();
