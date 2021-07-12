@@ -16,6 +16,8 @@ frame-system = { git = 'https://github.com/paritytech/substrate', version = '3.0
 sp-runtime = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
 sp-std = { git = "https://github.com/paritytech/substrate", version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
 
+pallet-commodities = { path = "../pallet-nft", default-features = false }
+
 [dev-dependencies]
 serde = { version = "1.0.119" }
 sp-core = { git = 'https://github.com/paritytech/substrate', version = '3.0.0', tag = 'monthly-2021-07', default-features = false }
@@ -36,4 +38,6 @@ std = [
 	'sp-std/std',
 	'sp-runtime/std',
 	'bech32/std',
+
+	'pallet-commodities/std'
 ]

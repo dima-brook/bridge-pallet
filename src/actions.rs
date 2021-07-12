@@ -1,5 +1,5 @@
 use sp_std::{collections::btree_set::BTreeSet, vec::Vec};
-use crate::{Config, Balance, EgldBalance};
+use crate::{Config, Balance, EgldBalance, NftId};
 use sp_runtime::{RuntimeDebug};
 use codec::{Encode, Decode};
 
@@ -11,6 +11,11 @@ pub enum LocalAction<T: Config> {
     Unfreeze {
         to: T::AccountId,
         value: Balance<T>
+    },
+    /// Release local nft and send to target
+    UnfreezeNft {
+        to: T::AccountId,
+        nft_id: NftId<T>
     },
     /// Call a smart contract
     RpcCall {

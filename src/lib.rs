@@ -8,6 +8,7 @@ use actions::*;
 
 use weights::WeightInfo;
 use sp_std::vec::Vec;
+use pallet_commodities::{LockableUniqueAssets, UniqueAssets};
 use frame_support::{traits::{Currency, Get}, dispatch::{DispatchResultWithPostInfo}};
 use frame_system::pallet_prelude::BlockNumberFor;
 
@@ -19,6 +20,9 @@ pub(crate) type Balance<T> =
 
 pub(crate) type EgldBalance<T> =
     <<T as Config>::EgldToken as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+pub(crate) type NftId<T> =
+    <<T as Config>::Nft as UniqueAssets<<T as frame_system::Config>::AccountId>>::AssetId;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -35,6 +39,7 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
         type Currency: Currency<Self::AccountId>;
         type EgldToken: Currency<Self::AccountId>;
+        type Nft: LockableUniqueAssets<Self::AccountId>;
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type WeightInfo: WeightInfo;
@@ -68,7 +73,11 @@ pub mod pallet {
 	pub enum Event<T: Config> {
         /// Send currency from local chain to foreign chain
         /// action_id, target address, currency ammount
-        Transfer(ActionId, Vec<u8>, Balance<T>),
+        TransferFrozen(ActionId, Vec<u8>, Balance<T>),
+
+        /// Send Unique Assset from local chain to foreign chain
+        /// action_id, target address, Unique Asset Id
+        TransferUniqueFrozen(ActionId, Vec<u8>, NftId<T>),
 
         /// Call a smart contract on foreign chain
         /// action_id, contract address, call endpoint identifier, raw arguments
@@ -90,10 +99,6 @@ pub mod pallet {
         InvalidDestination,
         Unauthorized,
         DuplicateValidation,
-        /// Contract already initialized
-        ContractAlreadyInitialized,
-        /// Contract hasn't been initialized yet
-        ContractUninitialized
 	}
 
 	#[pallet::hooks]
@@ -120,7 +125,23 @@ pub mod pallet {
             // TODO: Deduct some as txn fees
             T::Currency::withdraw(&who, value, WithdrawReasons::RESERVE, ExistenceRequirement::KeepAlive)?; // TODO: Separate reserve storage for acc
             let action = Self::action_inc();
-            Self::deposit_event(Event::Transfer(action, dest, value));
+            Self::deposit_event(Event::TransferFrozen(action, dest, value));
+
+            Ok(().into())
+        }
+
+        // TODO: Proper weight
+        #[pallet::weight(10000)]
+        pub fn send_nft(
+            origin: OriginFor<T>,
+            dest: Vec<u8>,
+            nft_id: NftId<T>
+        ) -> DispatchResultWithPostInfo {
+            ensure_signed(origin)?;
+
+            T::Nft::lock(&nft_id)?;
+            let action = Self::action_inc();
+            Self::deposit_event(Event::TransferUniqueFrozen(action, dest, nft_id));
 
             Ok(().into())
         }
@@ -175,6 +196,26 @@ pub mod pallet {
 
             if Self::verify_action(acc, action_id, LocalAction::<T>::Unfreeze { to: to.clone(), value })? {
                 T::Currency::deposit_creating(&to, value);
+            }
+
+            Ok(().into())
+        }
+
+        // TODO: proper weight
+        #[pallet::weight(10000)]
+        pub fn unfreeze_nft_verify(
+            validator: OriginFor<T>,
+            action_id: Vec<u8>,
+            to: T::AccountId,
+            nft_id: NftId<T>
+        ) -> DispatchResultWithPostInfo {
+            let acc = ensure_signed(validator)?;
+
+            if Self::verify_action(acc, action_id, LocalAction::<T>::UnfreezeNft {
+                to: to.clone(),
+                nft_id: nft_id.clone()
+            })? {
+                T::Nft::force_transfer(&to, &nft_id)?;
             }
 
             Ok(().into())
