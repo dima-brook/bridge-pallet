@@ -24,6 +24,9 @@ pub(crate) type EgldBalance<T> =
 pub(crate) type NftId<T> =
     <<T as Config>::Nft as UniqueAssets<<T as frame_system::Config>::AccountId>>::AssetId;
 
+pub(crate) type NftInfo<T> =
+    <<T as Config>::Nft as UniqueAssets<<T as frame_system::Config>::AccountId>>::AssetInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -86,6 +89,10 @@ pub mod pallet {
         /// Send foreign currency back
         /// action_id, target address, currency ammount
         UnfreezeWrapped(ActionId, Vec<u8>, EgldBalance<T>),
+
+        /// Send foreign NFT back
+        /// action_id, target_address, NFT ptr data
+        UnfreezeUniqueWrapped(ActionId, Vec<u8>, NftInfo<T>)
 	}
 
 	// Errors inform users that something went wrong.
@@ -164,6 +171,24 @@ pub mod pallet {
             Self::deposit_event(Event::UnfreezeWrapped(action, dest, value));
 
             return Ok(().into());
+        }
+
+        #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(3))]
+        pub fn withdraw_wrapped_nft(
+            origin: OriginFor<T>,
+            dest: Vec<u8>,
+            nft_id: NftId<T>
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            ensure!(who == T::Nft::owner_of(&nft_id), Error::<T>::Unauthorized);
+
+            let data = T::Nft::asset_info(&nft_id)?;
+
+            T::Nft::burn(&nft_id)?;
+            let action = Self::action_inc();
+            Self::deposit_event(Event::UnfreezeUniqueWrapped(action, dest, data));
+
+            Ok(().into())
         }
 
         // TODO: proper weight
@@ -261,6 +286,26 @@ pub mod pallet {
 
             Ok(().into())
         }
+
+        #[pallet::weight(10000 + T::WeightInfo::verify_action())]
+        pub fn transfer_wrapped_nft_verify(
+            validator: OriginFor<T>,
+            action_id: Vec<u8>,
+            to: T::AccountId,
+            data: NftInfo<T>
+        ) -> DispatchResultWithPostInfo {
+            let acc = ensure_signed(validator)?;
+
+            if Self::verify_action(acc.clone(), action_id,
+            LocalAction::<T>::TransferWrappedNft {
+                to: to.clone(),
+                data: data.clone()
+            })? {
+                T::Nft::mint(&to, data)?;
+            }
+
+            Ok(().into())
+        }
 	}
 
     /// Genesis config
@@ -282,8 +327,7 @@ pub mod pallet {
 
     #[cfg(feature = "std")]
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T>
-    {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
             <LastActionId<T>>::put(0);
             for validator in &self.initial_validators {

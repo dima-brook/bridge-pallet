@@ -1,5 +1,5 @@
 use sp_std::{collections::btree_set::BTreeSet, vec::Vec};
-use crate::{Config, Balance, EgldBalance, NftId};
+use crate::{Config, Balance, EgldBalance, NftId, NftInfo};
 use sp_runtime::{RuntimeDebug};
 use codec::{Encode, Decode};
 
@@ -28,6 +28,10 @@ pub enum LocalAction<T: Config> {
     TransferWrapped {
         to: T::AccountId,
         value: EgldBalance<T>
+    },
+    TransferWrappedNft {
+        to: T::AccountId,
+        data: NftInfo<T>
     }
 }
 
