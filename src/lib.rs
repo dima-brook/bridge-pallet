@@ -11,15 +11,22 @@ use sp_std::vec::Vec;
 use pallet_commodities::{LockableUniqueAssets, UniqueAssets};
 use frame_support::{traits::{Currency, Get}, dispatch::{DispatchResultWithPostInfo}};
 use frame_system::pallet_prelude::BlockNumberFor;
+use pallet_erc1155::erc1155::{
+    // TODO: Use ERC115Reservable
+    ERC1155Burnable, ERC1155Mintable, ERC1155
+};
 
-pub type TokenId = u128;
 pub type ActionId = u128;
+pub type ChainId = u128;
+
+pub(crate) type TokenId<T> =
+    <<T as Config>::Erc1155 as ERC1155<<T as frame_system::Config>::AccountId>>::TokenId;
 
 pub(crate) type Balance<T> =
 	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-pub(crate) type EgldBalance<T> =
-    <<T as Config>::EgldToken as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+pub(crate) type Erc1155Balance<T> =
+    <<T as Config>::Erc1155 as ERC1155<<T as frame_system::Config>::AccountId>>::Balance;
 
 pub(crate) type NftId<T> =
     <<T as Config>::Nft as UniqueAssets<<T as frame_system::Config>::AccountId>>::AssetId;
@@ -41,7 +48,7 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
         type Currency: Currency<Self::AccountId>;
-        type EgldToken: Currency<Self::AccountId>;
+        type Erc1155: ERC1155Mintable<Self::AccountId> + ERC1155Burnable<Self::AccountId>;
         type Nft: LockableUniqueAssets<Self::AccountId>;
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -69,30 +76,32 @@ pub mod pallet {
     #[pallet::storage]
     pub type Actions<T: Config> = StorageMap<_, Blake2_128Concat, Vec<u8>, ActionInfo<T>>;
 
+    #[pallet::storage]
+    pub type SupportedChains<T: Config> = StorageMap<_, Blake2_128Concat, ChainId, TokenId<T>>;
 
 	#[pallet::event]
 	#[pallet::metadata(T::AccountId = "AccountId")]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
         /// Send currency from local chain to foreign chain
-        /// action_id, target address, currency ammount
-        TransferFrozen(ActionId, Vec<u8>, Balance<T>),
+        /// action_id, target chain, target address, currency ammount
+        TransferFrozen(ActionId, ChainId, Vec<u8>, Balance<T>),
 
         /// Send Unique Assset from local chain to foreign chain
-        /// action_id, target address, Unique Asset Id
-        TransferUniqueFrozen(ActionId, Vec<u8>, NftId<T>),
+        /// action_id, target chain, target address, Unique Asset Id
+        TransferUniqueFrozen(ActionId, ChainId, Vec<u8>, NftId<T>),
 
         /// Call a smart contract on foreign chain
-        /// action_id, contract address, call endpoint identifier, raw arguments
-        ScCall(ActionId, Vec<u8>, Vec<u8>, Vec<Vec<u8>>),
+        /// action_id, target chain, contract address, call endpoint identifier, raw arguments
+        ScCall(ActionId, ChainId, Vec<u8>, Vec<u8>, Vec<Vec<u8>>),
 
         /// Send foreign currency back
-        /// action_id, target address, currency ammount
-        UnfreezeWrapped(ActionId, Vec<u8>, EgldBalance<T>),
+        /// action_id, target chain, target address, currency ammount
+        UnfreezeWrapped(ActionId, ChainId, Vec<u8>, Erc1155Balance<T>),
 
         /// Send foreign NFT back
-        /// action_id, target_address, NFT ptr data
-        UnfreezeUniqueWrapped(ActionId, Vec<u8>, NftInfo<T>)
+        /// action_id, target chain, target_address, NFT ptr data
+        UnfreezeUniqueWrapped(ActionId, ChainId, Vec<u8>, NftInfo<T>)
 	}
 
 	// Errors inform users that something went wrong.
@@ -106,6 +115,7 @@ pub mod pallet {
         InvalidDestination,
         Unauthorized,
         DuplicateValidation,
+        UnsupportedChain
 	}
 
 	#[pallet::hooks]
@@ -117,6 +127,7 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(2))]
         pub fn send(
             origin: OriginFor<T>,
+            chain: ChainId,
             dest: Vec<u8>,
             #[pallet::compact] value: Balance<T> 
         ) -> DispatchResultWithPostInfo {
@@ -129,10 +140,15 @@ pub mod pallet {
                 return Err(Error::<T>::OutOfFunds.into());
             }
 
+            ensure!(
+                <SupportedChains<T>>::get(chain).is_some(),
+                Error::<T>::UnsupportedChain
+            );
+
             // TODO: Deduct some as txn fees
             T::Currency::withdraw(&who, value, WithdrawReasons::RESERVE, ExistenceRequirement::KeepAlive)?; // TODO: Separate reserve storage for acc
             let action = Self::action_inc();
-            Self::deposit_event(Event::TransferFrozen(action, dest, value));
+            Self::deposit_event(Event::TransferFrozen(action, chain, dest, value));
 
             Ok(().into())
         }
@@ -141,15 +157,20 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(2))]
         pub fn send_nft(
             origin: OriginFor<T>,
+            chain: ChainId,
             dest: Vec<u8>,
             nft_id: NftId<T>
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             ensure!(T::Nft::owner_of(&nft_id) == who, Error::<T>::Unauthorized);
+            ensure!(
+                <SupportedChains<T>>::get(chain).is_some(),
+                Error::<T>::UnsupportedChain
+            );
 
             T::Nft::lock(&nft_id)?;
             let action = Self::action_inc();
-            Self::deposit_event(Event::TransferUniqueFrozen(action, dest, nft_id));
+            Self::deposit_event(Event::TransferUniqueFrozen(action, chain, dest, nft_id));
 
             Ok(().into())
         }
@@ -157,8 +178,9 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(2))]
         pub fn withdraw_wrapped(
             origin: OriginFor<T>,
+            chain: ChainId,
             dest: Vec<u8>,
-            #[pallet::compact] value: EgldBalance<T>
+            #[pallet::compact] value: Erc1155Balance<T>
         ) -> DispatchResultWithPostInfo {
             let acc = ensure_signed(origin)?;
             // TODO: bech32 decode check
@@ -166,9 +188,12 @@ pub mod pallet {
                 return Err(Error::<T>::InvalidValue.into());
             }
 
-            T::EgldToken::withdraw(&acc, value, WithdrawReasons::RESERVE, ExistenceRequirement::KeepAlive)?;
+            let token = <SupportedChains<T>>::get(chain)
+                .ok_or(Error::<T>::UnsupportedChain)?;
+
+            T::Erc1155::burn(&acc, &token, value)?;
             let action = Self::action_inc();
-            Self::deposit_event(Event::UnfreezeWrapped(action, dest, value));
+            Self::deposit_event(Event::UnfreezeWrapped(action, chain, dest, value));
 
             return Ok(().into());
         }
@@ -176,17 +201,22 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(3))]
         pub fn withdraw_wrapped_nft(
             origin: OriginFor<T>,
+            chain: ChainId,
             dest: Vec<u8>,
             nft_id: NftId<T>
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             ensure!(who == T::Nft::owner_of(&nft_id), Error::<T>::Unauthorized);
+            ensure!(
+                <SupportedChains<T>>::get(chain).is_some(),
+                Error::<T>::UnsupportedChain
+            );
 
             let data = T::Nft::asset_info(&nft_id)?;
 
             T::Nft::burn(&nft_id)?;
             let action = Self::action_inc();
-            Self::deposit_event(Event::UnfreezeUniqueWrapped(action, dest, data));
+            Self::deposit_event(Event::UnfreezeUniqueWrapped(action, chain, dest, data));
 
             Ok(().into())
         }
@@ -195,17 +225,22 @@ pub mod pallet {
         #[pallet::weight(10000 + T::DbWeight::get().writes(1) + T::DbWeight::get().reads(1))]
         pub fn send_sc_call(
             origin: OriginFor<T>,
+            chain: ChainId,
             dest: Vec<u8>,
             endpoint: Vec<u8>,
             args: Vec<Vec<u8>>
         ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
+            ensure!(
+                <SupportedChains<T>>::get(chain).is_some(),
+                Error::<T>::UnsupportedChain
+            );
 
             //bech32::decode(&dest).map_err(|_| Error::<T>::InvalidDestination)?;
 
             // TODO: Deduct some balance as txn fees
             let action = Self::action_inc();
-            Self::deposit_event(Event::ScCall(action, dest, endpoint, args));
+            Self::deposit_event(Event::ScCall(action, chain, dest, endpoint, args));
 
             Ok(().into())
         }
@@ -231,6 +266,7 @@ pub mod pallet {
         #[pallet::weight(10000)]
         pub fn unfreeze_nft_verify(
             validator: OriginFor<T>,
+            chain: ChainId,
             action_id: Vec<u8>,
             to: T::AccountId,
             nft_id: NftId<T>
@@ -270,18 +306,22 @@ pub mod pallet {
         #[pallet::weight(10000 + T::WeightInfo::verify_action())]
         pub fn transfer_wrapped_verify(
             validator: OriginFor<T>,
+            chain: ChainId,
             action_id: Vec<u8>,
             to: <T::Lookup as StaticLookup>::Source,
-            value: EgldBalance<T>
+            value: Erc1155Balance<T>
         ) -> DispatchResultWithPostInfo {
             let acc = ensure_signed(validator)?;
             let to = T::Lookup::lookup(to)?;
+
+            let token = <SupportedChains<T>>::get(chain)
+                .ok_or(Error::<T>::UnsupportedChain)?;
 
             if Self::verify_action(acc.clone(), action_id, LocalAction::<T>::TransferWrapped{
                 to: to.clone(),
                 value
             })? {
-                T::EgldToken::deposit_creating(&to, value);
+                T::Erc1155::mint(&to, &token, value, None);
             }
 
             Ok(().into())
@@ -314,6 +354,7 @@ pub mod pallet {
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub initial_validators: Vec<T::AccountId>,
+        pub supported_tokens: Vec<(ChainId, TokenId<T>)>
     }
 
     #[cfg(feature = "std")]
@@ -321,6 +362,7 @@ pub mod pallet {
         fn default() -> Self {
             Self {
                 initial_validators: Vec::new(),
+                supported_tokens: Vec::new()
             }
         }
     }
@@ -330,17 +372,15 @@ pub mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
             <LastActionId<T>>::put(0);
+
             for validator in &self.initial_validators {
                 <Validators<T>>::insert(validator.clone(), ());
             }
             <ValidatorCnt<T>>::put(self.initial_validators.len() as u64);
-            /*let erc1155_addr: T::AccountId = Pallet::<T>::erc1155_init(
-                erc1155_raw::CONTRACT_BYTES.to_vec()
-            ).result?.account_id;
-            <Erc1155<T>>::put(erc1155_addr);
 
-            let egld_tokenid = Pallet::<T>::erc1155_create()
-            <EgldTokenId<T>>::put(egld_tokenid);*/
+            for token in self.supported_tokens {
+                <SupportedChains<T>>::insert(token.0, token.1);
+            }
         }
     }
 }
