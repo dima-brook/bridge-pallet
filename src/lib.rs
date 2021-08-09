@@ -48,8 +48,8 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
         type Currency: Currency<Self::AccountId>;
-        type Erc1155: ERC1155Mintable<Self::AccountId> + ERC1155Burnable<Self::AccountId>;
-        type Nft: LockableUniqueAssets<Self::AccountId>;
+        type Erc1155: ERC1155Mintable<Self::AccountId> + ERC1155Burnable<Self::AccountId> + ERC1155<Self::AccountId>;
+        type Nft: LockableUniqueAssets<Self::AccountId> + UniqueAssets<Self::AccountId>;
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type WeightInfo: WeightInfo;
