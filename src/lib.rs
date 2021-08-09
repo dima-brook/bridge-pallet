@@ -266,7 +266,6 @@ pub mod pallet {
         #[pallet::weight(10000)]
         pub fn unfreeze_nft_verify(
             validator: OriginFor<T>,
-            chain: ChainId,
             action_id: Vec<u8>,
             to: T::AccountId,
             nft_id: NftId<T>
@@ -321,7 +320,7 @@ pub mod pallet {
                 to: to.clone(),
                 value
             })? {
-                T::Erc1155::mint(&to, &token, value, None);
+                T::Erc1155::mint(&to, &token, value, None)?;
             }
 
             Ok(().into())
@@ -378,7 +377,7 @@ pub mod pallet {
             }
             <ValidatorCnt<T>>::put(self.initial_validators.len() as u64);
 
-            for token in self.supported_tokens {
+            for token in self.supported_tokens.iter() {
                 <SupportedChains<T>>::insert(token.0, token.1);
             }
         }

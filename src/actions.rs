@@ -1,5 +1,5 @@
 use sp_std::{collections::btree_set::BTreeSet, vec::Vec};
-use crate::{Config, Balance, EgldBalance, NftId, NftInfo};
+use crate::{Config, Balance, NftId, NftInfo, Erc1155Balance};
 use sp_runtime::{RuntimeDebug};
 use codec::{Encode, Decode};
 
@@ -27,7 +27,7 @@ pub enum LocalAction<T: Config> {
     /// Mint foreign currency and send to target
     TransferWrapped {
         to: T::AccountId,
-        value: EgldBalance<T>
+        value: Erc1155Balance<T>
     },
     TransferWrappedNft {
         to: T::AccountId,
